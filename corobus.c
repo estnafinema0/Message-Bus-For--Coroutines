@@ -93,9 +93,8 @@ wakeup_queue_suspend_this(struct wakeup_queue *queue)
 	rlist_del_entry(&entry, base);
 }
 
-
 /** Instead of this function you can write this construction in the code
- * 
+ *
  * struct wakeup_entry entry = {.coro = coro_this()};
  * rlist_add_tail(&chan->recv_queue.coros, &entry.base);
  * coro_suspend();
@@ -262,7 +261,33 @@ void coro_bus_channel_close(struct coro_bus *bus, int channel)
 	struct coro_bus_channel *chan = bus->channels[channel];
 	bus->channels[channel] = NULL;
 
-	wakeup_queue_wakeup_first(&bus->broadcast_queue);
+	/* 1) Wake up all coroutines waiting for send with error NO_CHANNEL */
+	while (!rlist_empty(&chan->send_queue.coros))
+	{
+		struct wakeup_entry *e = rlist_shift_entry(
+			&chan->send_queue.coros,
+			struct wakeup_entry, base);
+		coro_bus_errno_set(CORO_BUS_ERR_NO_CHANNEL);
+		coro_wakeup(e->coro);
+	}
+	/* 2) Wake up all coroutines waiting for recv with error NO_CHANNEL */
+	while (!rlist_empty(&chan->recv_queue.coros))
+	{
+		struct wakeup_entry *e = rlist_shift_entry(
+			&chan->recv_queue.coros,
+			struct wakeup_entry, base);
+		coro_bus_errno_set(CORO_BUS_ERR_NO_CHANNEL);
+		coro_wakeup(e->coro);
+	}
+	/* 3) Wake up all coroutines waiting for broadcast with error NO_CHANNEL */
+	while (!rlist_empty(&bus->broadcast_queue.coros))
+	{
+		struct wakeup_entry *e = rlist_shift_entry(
+			&bus->broadcast_queue.coros,
+			struct wakeup_entry, base);
+		coro_bus_errno_set(CORO_BUS_ERR_NO_CHANNEL);
+		coro_wakeup(e->coro);
+	}
 
 	free(chan->data.data);
 	free(chan);
@@ -327,7 +352,7 @@ int coro_bus_try_send(struct coro_bus *bus, int channel, unsigned data)
 	 * there is data.
 	 */
 	coro_bus_errno_set(CORO_BUS_ERR_WOULD_BLOCK);
-    return -1;
+	return -1;
 }
 
 int coro_bus_recv(struct coro_bus *bus, int channel, unsigned *data)
@@ -523,7 +548,7 @@ int coro_bus_recv_v(struct coro_bus *bus, int channel, unsigned *data, unsigned 
 
 int coro_bus_try_recv_v(struct coro_bus *bus, int channel, unsigned *data, unsigned capacity)
 {
-	if (!bus || channel < 0 || channel >= bus->channel_count || bus->channels[channel] == NULL) 
+	if (!bus || channel < 0 || channel >= bus->channel_count || bus->channels[channel] == NULL)
 	{
 		coro_bus_errno_set(CORO_BUS_ERR_NO_CHANNEL);
 		return -1;
@@ -531,20 +556,21 @@ int coro_bus_try_recv_v(struct coro_bus *bus, int channel, unsigned *data, unsig
 
 	struct coro_bus_channel *chan = bus->channels[channel];
 
-	if (chan->data.size == 0) {
-        coro_bus_errno_set(CORO_BUS_ERR_WOULD_BLOCK);
-        return -1;
-    }
+	if (chan->data.size == 0)
+	{
+		coro_bus_errno_set(CORO_BUS_ERR_WOULD_BLOCK);
+		return -1;
+	}
 
 	unsigned have = chan->data.size;
-    unsigned to_recv = (capacity < have ? capacity : have);
+	unsigned to_recv = (capacity < have ? capacity : have);
 
-    data_vector_pop_first_many(&chan->data, data, to_recv);
+	data_vector_pop_first_many(&chan->data, data, to_recv);
 
-    coro_bus_errno_set(CORO_BUS_ERR_NONE);
-    wakeup_queue_wakeup_first(&chan->send_queue);
+	coro_bus_errno_set(CORO_BUS_ERR_NONE);
+	wakeup_queue_wakeup_first(&chan->send_queue);
 
-    return to_recv;
+	return to_recv;
 }
 
 #endif
