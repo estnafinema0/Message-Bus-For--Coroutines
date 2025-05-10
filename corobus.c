@@ -93,6 +93,15 @@ wakeup_queue_suspend_this(struct wakeup_queue *queue)
 	rlist_del_entry(&entry, base);
 }
 
+
+/** Instead of this function you can write this construction in the code
+ * 
+ * struct wakeup_entry entry = {.coro = coro_this()};
+ * rlist_add_tail(&chan->recv_queue.coros, &entry.base);
+ * coro_suspend();
+ * rlist_del(&entry.base);
+ */
+
 /** Wakeup the first coroutine in the queue. */
 static void
 wakeup_queue_wakeup_first(struct wakeup_queue *queue)
@@ -291,10 +300,7 @@ int coro_bus_send(struct coro_bus *bus, int channel, unsigned data)
 			return -1;
 		}
 		/* if  WOULD_BLOCK — block current corotine */
-		struct wakeup_entry entry = {.coro = coro_this()};
-		rlist_add_tail(&chan->send_queue.coros, &entry.base);
-		coro_suspend();
-		rlist_del(&entry.base);
+		wakeup_queue_suspend_this(&chan->send_queue);
 	}
 }
 
@@ -320,6 +326,8 @@ int coro_bus_try_send(struct coro_bus *bus, int channel, unsigned data)
 	 * Wakeup the first coro in the recv-queue! To let it know
 	 * there is data.
 	 */
+	coro_bus_errno_set(CORO_BUS_ERR_WOULD_BLOCK);
+    return -1;
 }
 
 int coro_bus_recv(struct coro_bus *bus, int channel, unsigned *data)
@@ -342,11 +350,7 @@ int coro_bus_recv(struct coro_bus *bus, int channel, unsigned *data)
 			return -1;
 		}
 		/* if  WOULD_BLOCK — block current corotine */
-
-		struct wakeup_entry entry = {.coro = coro_this()};
-		rlist_add_tail(&chan->recv_queue.coros, &entry.base);
-		coro_suspend();
-		rlist_del(&entry.base);
+		wakeup_queue_suspend_this(&chan->recv_queue);
 	}
 }
 
@@ -387,14 +391,9 @@ int coro_bus_broadcast(struct coro_bus *bus, unsigned data)
 	{
 		if (coro_bus_try_broadcast(bus, data) == 0)
 			return 0;
-		if (coro_bus_errno == CORO_BUS_ERR_NO_CHANNEL)
+		if (coro_bus_errno() == CORO_BUS_ERR_NO_CHANNEL)
 			return -1;
-
-		struct wakeup_entry entry = {.coro = coro_this()};
-
-		rlist_add_tail(&bus->broadcast_queue.coros, &entry.base);
-		coro_suspend();
-		rlist_del(&entry.base);
+		wakeup_queue_suspend_this(&bus->broadcast_queue);
 	}
 }
 
@@ -460,10 +459,7 @@ int coro_bus_send_v(struct coro_bus *bus, int channel, const unsigned *data, uns
 		return -1;
 
 	/* if  WOULD_BLOCK — block current corotine */
-	struct wakeup_entry entry = {.coro = coro_this()};
-	rlist_add_tail(&chan->send_queue.coros, &entry.base);
-	coro_suspend();
-	rlist_del(&entry.base);
+	wakeup_queue_suspend_this(&chan->send_queue);
 
 	/* After wake up */
 	sent = coro_bus_try_send_v(bus, channel, data, count);
@@ -516,13 +512,10 @@ int coro_bus_recv_v(struct coro_bus *bus, int channel, unsigned *data, unsigned 
 		return -1;
 
 	/* if  WOULD_BLOCK — block current corotine */
-	struct wakeup_entry entry = { .coro = coro_this() };
-    rlist_add_tail(&chan->recv_queue.coros, &entry.base);
-    coro_suspend();
-    rlist_del(&entry.base);
+	wakeup_queue_suspend_this(&chan->recv_queue);
 
 	/* After wake up */
-	recv = coro_bus_try_send_v(bus, channel, data, capacity);
+	recv = coro_bus_try_recv_v(bus, channel, data, capacity);
 	if (recv < 0 && coro_bus_errno() == CORO_BUS_ERR_NO_CHANNEL)
 		return -1;
 	return recv;
