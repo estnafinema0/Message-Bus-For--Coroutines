@@ -446,24 +446,58 @@ int coro_bus_try_broadcast(struct coro_bus *bus, unsigned data)
 
 int coro_bus_send_v(struct coro_bus *bus, int channel, const unsigned *data, unsigned count)
 {
-	/* IMPLEMENT THIS FUNCTION */
-	(void)bus;
-	(void)channel;
-	(void)data;
-	(void)count;
-	coro_bus_errno_set(CORO_BUS_ERR_NOT_IMPLEMENTED);
-	return -1;
+	if (!bus || channel < 0 || channel >= bus->channel_count || bus->channels[channel] == NULL)
+	{
+		coro_bus_errno_set(CORO_BUS_ERR_NO_CHANNEL);
+		return -1;
+	}
+	struct coro_bus_channel *ch = bus->channels[channel];
+
+	int sent = coro_bus_try_send_v(bus, channel, data, count);
+	if (sent >= 0)
+		return sent;
+	if (coro_bus_errno() == CORO_BUS_ERR_NO_CHANNEL)
+		return -1;
+
+	/* if  WOULD_BLOCK — block current corotine */
+	struct wakeup_entry entry = {.coro = coro_this()};
+	rlist_add_tail(&ch->send_queue.coros, &entry.base);
+	coro_suspend();
+	rlist_del(&entry.base);
+
+	/* After wake up */
+	sent = coro_bus_try_send_v(bus, channel, data, count);
+	if (sent < 0 && coro_bus_errno() == CORO_BUS_ERR_NO_CHANNEL)
+		return -1;
+	return sent;
 }
 
 int coro_bus_try_send_v(struct coro_bus *bus, int channel, const unsigned *data, unsigned count)
 {
-	/* IMPLEMENT THIS FUNCTION */
-	(void)bus;
-	(void)channel;
-	(void)data;
-	(void)count;
-	coro_bus_errno_set(CORO_BUS_ERR_NOT_IMPLEMENTED);
-	return -1;
+	if (!bus || channel < 0 || channel >= bus->channel_count || bus->channels[channel] == NULL)
+	{
+		coro_bus_errno_set(CORO_BUS_ERR_NO_CHANNEL);
+		return -1;
+	}
+	struct coro_bus_channel *ch = bus->channels[channel];
+
+	/* If no space for even one message */
+	if (ch->data.size >= ch->size_limit)
+	{
+		coro_bus_errno_set(CORO_BUS_ERR_WOULD_BLOCK);
+		return -1;
+	}
+
+	/* How much can send actually */
+	unsigned can = ch->size_limit - ch->data.size;
+	unsigned to_send = (count < can ? count : can);
+
+	data_vector_append_many(&ch->data, data, to_send);
+
+	coro_bus_errno_set(CORO_BUS_ERR_NONE);
+	wakeup_queue_wakeup_first(&ch->recv_queue);
+
+	return to_send;
 }
 
 int coro_bus_recv_v(struct coro_bus *bus, int channel, unsigned *data, unsigned capacity)
