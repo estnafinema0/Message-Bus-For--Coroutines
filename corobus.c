@@ -158,35 +158,40 @@ void coro_bus_delete(struct coro_bus *bus)
 		return;
 
 	/* 1) wake up all broadcast waiting coros */
-    while (!rlist_empty(&bus->broadcast_queue.coros)) {
-        struct wakeup_entry *e = rlist_shift_entry(
-            &bus->broadcast_queue.coros,
-            struct wakeup_entry, base);
-        coro_wakeup(e->coro);
-    }
+	while (!rlist_empty(&bus->broadcast_queue.coros))
+	{
+		struct wakeup_entry *e = rlist_shift_entry(
+			&bus->broadcast_queue.coros,
+			struct wakeup_entry, base);
+		coro_wakeup(e->coro);
+	}
 
-    /* 2) wake up all send/recv for all channels */
-    for (int i = 0; i < bus->channel_count; ++i) {
-        struct coro_bus_channel *chan = bus->channels[i];
-        if (!chan) continue;
+	/* 2) wake up all send/recv for all channels */
+	for (int i = 0; i < bus->channel_count; ++i)
+	{
+		struct coro_bus_channel *chan = bus->channels[i];
+		if (!chan)
+			continue;
 
-        while (!rlist_empty(&chan->send_queue.coros)) {
-            struct wakeup_entry *e = rlist_shift_entry(
-                &chan->send_queue.coros,
-                struct wakeup_entry, base);
-            coro_wakeup(e->coro);
-        }
-        while (!rlist_empty(&chan->recv_queue.coros)) {
-            struct wakeup_entry *e = rlist_shift_entry(
-                &chan->recv_queue.coros,
-                struct wakeup_entry, base);
-            coro_wakeup(e->coro);
-        }
+		while (!rlist_empty(&chan->send_queue.coros))
+		{
+			struct wakeup_entry *e = rlist_shift_entry(
+				&chan->send_queue.coros,
+				struct wakeup_entry, base);
+			coro_wakeup(e->coro);
+		}
+		while (!rlist_empty(&chan->recv_queue.coros))
+		{
+			struct wakeup_entry *e = rlist_shift_entry(
+				&chan->recv_queue.coros,
+				struct wakeup_entry, base);
+			coro_wakeup(e->coro);
+		}
 
-        free(chan->data.data);
-        free(chan);
-    }
-	
+		free(chan->data.data);
+		free(chan);
+	}
+
 	free(bus->channels);
 	free(bus);
 	coro_bus_errno_set(CORO_BUS_ERR_NONE);
@@ -372,57 +377,67 @@ int coro_bus_try_recv(struct coro_bus *bus, int channel, unsigned *data)
 
 int coro_bus_broadcast(struct coro_bus *bus, unsigned data)
 {
-	if (!bus || bus->channel_count == 0) {
-        coro_bus_errno_set(CORO_BUS_ERR_NO_CHANNEL);
-        return -1;
-    }
+	if (!bus || bus->channel_count == 0)
+	{
+		coro_bus_errno_set(CORO_BUS_ERR_NO_CHANNEL);
+		return -1;
+	}
 
-	while (true) {
-		if (coro_bus_try_broadcast(bus, data) == 0) return 0;
-		if (coro_bus_errno == CORO_BUS_ERR_NO_CHANNEL) return -1;
+	while (true)
+	{
+		if (coro_bus_try_broadcast(bus, data) == 0)
+			return 0;
+		if (coro_bus_errno == CORO_BUS_ERR_NO_CHANNEL)
+			return -1;
 
-		struct wakeup_entry entry = { .coro = coro_this() };
+		struct wakeup_entry entry = {.coro = coro_this()};
 
-        rlist_add_tail(&bus->broadcast_queue.coros, &entry.base);
-        coro_suspend();
-        rlist_del(&entry.base);
-
+		rlist_add_tail(&bus->broadcast_queue.coros, &entry.base);
+		coro_suspend();
+		rlist_del(&entry.base);
 	}
 }
 
 int coro_bus_try_broadcast(struct coro_bus *bus, unsigned data)
 {
-	if (!bus || bus->channel_count == 0) {
-        coro_bus_errno_set(CORO_BUS_ERR_NO_CHANNEL);
-        return -1;
-    }
+	if (!bus || bus->channel_count == 0)
+	{
+		coro_bus_errno_set(CORO_BUS_ERR_NO_CHANNEL);
+		return -1;
+	}
 
 	bool any = false;
 
-	for (int id = 0; id < bus->channel_count; ++id) {
+	for (int id = 0; id < bus->channel_count; ++id)
+	{
 		struct coro_bus_channel *chan = bus->channels[id];
-        if (!chan) continue; 
+		if (!chan)
+			continue;
 		any = true;
-		if (chan->data.size >= chan->size_limit) {
+		if (chan->data.size >= chan->size_limit)
+		{
 			coro_bus_errno_set(CORO_BUS_ERR_WOULD_BLOCK);
 			return -1;
 		}
 	}
-	
-	if (!any) {
-        /* If all channels were null */
-        coro_bus_errno_set(CORO_BUS_ERR_NO_CHANNEL);
-        return -1;
-    }
 
-	for (int id = 0; id < bus->channel_count; ++id) {
-		if (!bus->channels[id]) continue;
+	if (!any)
+	{
+		/* If all channels were null */
+		coro_bus_errno_set(CORO_BUS_ERR_NO_CHANNEL);
+		return -1;
+	}
+
+	for (int id = 0; id < bus->channel_count; ++id)
+	{
+		if (!bus->channels[id])
+			continue;
 		data_vector_append(&bus->channels[id]->data, data);
 		wakeup_queue_wakeup_first(&bus->channels[id]->recv_queue);
 	}
-	
+
 	coro_bus_errno_set(CORO_BUS_ERR_NONE);
-    return 0;
+	return 0;
 }
 
 #endif
