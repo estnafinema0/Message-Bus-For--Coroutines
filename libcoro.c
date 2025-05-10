@@ -1,6 +1,14 @@
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+
+#ifndef _XOPEN_SOURCE
+#define _XOPEN_SOURCE 700
+#endif
+
 #include "libcoro.h"
 
-#include "rlist.h"
+#include "utils/rlist.h"
 
 #include <assert.h>
 #include <stdio.h>
