@@ -231,10 +231,29 @@ void coro_bus_channel_close(struct coro_bus *bus, int channel)
 
 int coro_bus_send(struct coro_bus *bus, int channel, unsigned data)
 {
-	/* IMPLEMENT THIS FUNCTION */
-	(void)bus;
-	(void)channel;
-	(void)data;
+	if (!bus || channel < 0 || channel >= bus->channel_count || bus->channels[channel] == NULL)
+	{
+		coro_bus_errno_set(CORO_BUS_ERR_NO_CHANNEL);
+		return -1;
+	}
+	struct coro_bus_channel *chan = bus->channels[channel];
+
+	while (true)
+	{
+		if (coro_bus_try_send(bus, channel, data) == 0)
+		{
+			return 0;
+		}
+		if (coro_bus_errno() == CORO_BUS_ERR_NO_CHANNEL)
+		{
+			return -1;
+		}
+		/* if  WOULD_BLOCK — block current corotine */
+		struct wakeup_entry entry = {.coro = coro_this()};
+		rlist_add_tail(&chan->send_queue.coros, &entry.base);
+		coro_suspend();
+		rlist_del(&entry.base);
+	}
 	/*
 	 * Try sending in a loop, until success. If error, then
 	 * check which one is that. If 'wouldblock', then suspend
@@ -272,18 +291,34 @@ int coro_bus_try_send(struct coro_bus *bus, int channel, unsigned data)
 	 * Wakeup the first coro in the recv-queue! To let it know
 	 * there is data.
 	 */
-	coro_bus_errno_set(CORO_BUS_ERR_WOULD_BLOCK);
-	return -1;
 }
 
 int coro_bus_recv(struct coro_bus *bus, int channel, unsigned *data)
 {
-	/* IMPLEMENT THIS FUNCTION */
-	(void)bus;
-	(void)channel;
-	(void)data;
-	coro_bus_errno_set(CORO_BUS_ERR_NOT_IMPLEMENTED);
-	return -1;
+	if (!bus || channel < 0 || channel >= bus->channel_count || bus->channels[channel] == NULL)
+	{
+		coro_bus_errno_set(CORO_BUS_ERR_NO_CHANNEL);
+		return -1;
+	}
+	struct coro_bus_channel *chan = bus->channels[channel];
+
+	while (true)
+	{
+		if (coro_bus_try_recv(bus, channel, data) == 0)
+		{
+			return 0;
+		}
+		if (coro_bus_errno() == CORO_BUS_ERR_NO_CHANNEL)
+		{
+			return -1;
+		}
+		/* if  WOULD_BLOCK — block current corotine */
+
+		struct wakeup_entry entry = {.coro = coro_this()};
+		rlist_add_tail(&chan->recv_queue.coros, &entry.base);
+		coro_suspend();
+		rlist_del(&entry.base);
+	}
 }
 
 int coro_bus_try_recv(struct coro_bus *bus, int channel, unsigned *data)
