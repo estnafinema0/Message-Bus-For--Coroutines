@@ -157,15 +157,36 @@ void coro_bus_delete(struct coro_bus *bus)
 	if (bus == NULL)
 		return;
 
-	for (int i = 0; i < bus->channel_count; i++)
-	{
-		if (bus->channels[i] == NULL)
-			continue;
-		struct coro_bus_channel *channel = bus->channels[i];
-		free(channel->data.data);
-		free(channel);
-	}
+	/* 1) wake up all broadcast waiting coros */
+    while (!rlist_empty(&bus->broadcast_queue.coros)) {
+        struct wakeup_entry *e = rlist_shift_entry(
+            &bus->broadcast_queue.coros,
+            struct wakeup_entry, base);
+        coro_wakeup(e->coro);
+    }
 
+    /* 2) wake up all send/recv for all channels */
+    for (int i = 0; i < bus->channel_count; ++i) {
+        struct coro_bus_channel *chan = bus->channels[i];
+        if (!chan) continue;
+
+        while (!rlist_empty(&chan->send_queue.coros)) {
+            struct wakeup_entry *e = rlist_shift_entry(
+                &chan->send_queue.coros,
+                struct wakeup_entry, base);
+            coro_wakeup(e->coro);
+        }
+        while (!rlist_empty(&chan->recv_queue.coros)) {
+            struct wakeup_entry *e = rlist_shift_entry(
+                &chan->recv_queue.coros,
+                struct wakeup_entry, base);
+            coro_wakeup(e->coro);
+        }
+
+        free(chan->data.data);
+        free(chan);
+    }
+	
 	free(bus->channels);
 	free(bus);
 	coro_bus_errno_set(CORO_BUS_ERR_NONE);
@@ -228,7 +249,7 @@ void coro_bus_channel_close(struct coro_bus *bus, int channel)
 	bus->channels[channel] = NULL;
 
 	wakeup_queue_wakeup_first(&bus->broadcast_queue);
-	
+
 	free(chan->data.data);
 	free(chan);
 	coro_bus_errno_set(CORO_BUS_ERR_NO_CHANNEL);
