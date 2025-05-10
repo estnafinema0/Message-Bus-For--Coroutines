@@ -140,7 +140,9 @@ struct coro_bus *
 coro_bus_new(void)
 {
 	struct coro_bus *bus = malloc(sizeof(*bus));
-	if (!bus) return NULL;
+	if (!bus)
+		return NULL;
+
 	bus->channels = NULL;
 	bus->channel_count = 0;
 	coro_bus_errno_set(CORO_BUS_ERR_NONE);
@@ -151,6 +153,7 @@ void coro_bus_delete(struct coro_bus *bus)
 {
 	if (bus == NULL)
 		return;
+
 	for (int i = 0; i < bus->channel_count; i++)
 	{
 		if (bus->channels[i] == NULL)
@@ -159,25 +162,70 @@ void coro_bus_delete(struct coro_bus *bus)
 		free(channel->data.data);
 		free(channel);
 	}
-	free(bus->channels);	
+
+	free(bus->channels);
 	free(bus);
 	coro_bus_errno_set(CORO_BUS_ERR_NONE);
 }
 
 int coro_bus_channel_open(struct coro_bus *bus, size_t size_limit)
 {
-	/* IMPLEMENT THIS FUNCTION */
-	(void)bus;
-	(void)size_limit;
-	coro_bus_errno_set(CORO_BUS_ERR_NOT_IMPLEMENTED);
-	return -1;
+	if (bus == NULL)
+	{
+		coro_bus_errno_set(CORO_BUS_ERR_NO_CHANNEL);
+		return -1;
+	}
+
+	struct coro_bus_channel *chan = malloc(sizeof(*chan));
+	if (chan == NULL)
+	{
+		coro_bus_errno_set(CORO_BUS_ERR_NONE);
+		return -1;
+	}
+
+	chan->size_limit = size_limit;
+	rlist_create(&chan->recv_queue.coros);
+	rlist_create(&chan->send_queue.coros);
+	chan->data.data = NULL;
+	chan->data.size = 0;
+	chan->data.capacity = 0;
+
+	int id = 0;
+	for (id = 0; id < bus->channel_count; ++id)
+	{
+		if (bus->channels[id] == NULL)
+		{
+			bus->channels[id] = chan;
+			break;
+		}
+	}
+
+	if (id == bus->channel_count)
+	{
+		int new_count = bus->channel_count + 1;
+		bus->channels = realloc(bus->channels, new_count * sizeof(*bus->channels));
+		bus->channels[bus->channel_count] = chan;
+		id = bus->channel_count;
+		bus->channel_count = new_count;
+	}
+
+	coro_bus_errno_set(CORO_BUS_ERR_NONE);
+	return id;
 }
 
 void coro_bus_channel_close(struct coro_bus *bus, int channel)
 {
-	/* IMPLEMENT THIS FUNCTION */
-	(void)bus;
-	(void)channel;
+	if (!bus || channel < 0 || channel >= bus->channel_count || bus->channels[channel] == NULL)
+	{
+		coro_bus_errno_set(CORO_BUS_ERR_NO_CHANNEL);
+		return;
+	}
+
+	struct coro_bus_channel *chan = bus->channels[channel];
+	bus->channels[channel] = NULL;
+	free(chan->data.data);
+	free(chan);
+	coro_bus_errno_set(CORO_BUS_ERR_NO_CHANNEL);
 }
 
 int coro_bus_send(struct coro_bus *bus, int channel, unsigned data)
