@@ -262,7 +262,7 @@ int coro_bus_try_send(struct coro_bus *bus, int channel, unsigned data)
 
 	if (chan->data.size < chan->size_limit)
 	{
-		data_vector_append(&chan->data, chan->data.data);
+		data_vector_append(&chan->data, data);
 		coro_bus_errno_set(CORO_BUS_ERR_NONE);
 		wakeup_queue_wakeup_first(&chan->recv_queue);
 		return 0;
