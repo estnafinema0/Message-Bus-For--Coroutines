@@ -1,13 +1,14 @@
 #include "corobus.h"
 
 #include "libcoro.h"
-#include "rlist.h"
+#include "utils/rlist.h"
 
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
-struct data_vector {
+struct data_vector
+{
 	unsigned *data;
 	size_t size;
 	size_t capacity;
@@ -66,13 +67,15 @@ data_vector_pop_first(struct data_vector *vector)
  * One coroutine waiting to be woken up in a list of other
  * suspended coros.
  */
-struct wakeup_entry {
+struct wakeup_entry
+{
 	struct rlist base;
 	struct coro *coro;
 };
 
 /** A queue of suspended coros waiting to be woken up. */
-struct wakeup_queue {
+struct wakeup_queue
+{
 	struct rlist coros;
 };
 
@@ -102,7 +105,8 @@ wakeup_queue_wakeup_first(struct wakeup_queue *queue)
 
 #endif
 
-struct coro_bus_channel {
+struct coro_bus_channel
+{
 	/** Channel max capacity. */
 	size_t size_limit;
 	/** Coroutines waiting until the channel is not full. */
@@ -113,7 +117,8 @@ struct coro_bus_channel {
 	struct data_vector data;
 };
 
-struct coro_bus {
+struct coro_bus
+{
 	struct coro_bus_channel **channels;
 	int channel_count;
 };
@@ -126,8 +131,7 @@ coro_bus_errno(void)
 	return global_error;
 }
 
-void
-coro_bus_errno_set(enum coro_bus_error_code err)
+void coro_bus_errno_set(enum coro_bus_error_code err)
 {
 	global_error = err;
 }
@@ -135,20 +139,32 @@ coro_bus_errno_set(enum coro_bus_error_code err)
 struct coro_bus *
 coro_bus_new(void)
 {
-	/* IMPLEMENT THIS FUNCTION */
-	coro_bus_errno_set(CORO_BUS_ERR_NOT_IMPLEMENTED);
-	return NULL;
+	struct coro_bus *bus = malloc(sizeof(*bus));
+	if (!bus) return NULL;
+	bus->channels = NULL;
+	bus->channel_count = 0;
+	coro_bus_errno_set(CORO_BUS_ERR_NONE);
+	return bus;
 }
 
-void
-coro_bus_delete(struct coro_bus *bus)
+void coro_bus_delete(struct coro_bus *bus)
 {
-	/* IMPLEMENT THIS FUNCTION */
-	(void)bus;
+	if (bus == NULL)
+		return;
+	for (int i = 0; i < bus->channel_count; i++)
+	{
+		if (bus->channels[i] == NULL)
+			continue;
+		struct coro_bus_channel *channel = bus->channels[i];
+		free(channel->data.data);
+		free(channel);
+	}
+	free(bus->channels);	
+	free(bus);
+	coro_bus_errno_set(CORO_BUS_ERR_NONE);
 }
 
-int
-coro_bus_channel_open(struct coro_bus *bus, size_t size_limit)
+int coro_bus_channel_open(struct coro_bus *bus, size_t size_limit)
 {
 	/* IMPLEMENT THIS FUNCTION */
 	(void)bus;
@@ -157,16 +173,14 @@ coro_bus_channel_open(struct coro_bus *bus, size_t size_limit)
 	return -1;
 }
 
-void
-coro_bus_channel_close(struct coro_bus *bus, int channel)
+void coro_bus_channel_close(struct coro_bus *bus, int channel)
 {
 	/* IMPLEMENT THIS FUNCTION */
 	(void)bus;
 	(void)channel;
 }
 
-int
-coro_bus_send(struct coro_bus *bus, int channel, unsigned data)
+int coro_bus_send(struct coro_bus *bus, int channel, unsigned data)
 {
 	/* IMPLEMENT THIS FUNCTION */
 	(void)bus;
@@ -187,8 +201,7 @@ coro_bus_send(struct coro_bus *bus, int channel, unsigned data)
 	return -1;
 }
 
-int
-coro_bus_try_send(struct coro_bus *bus, int channel, unsigned data)
+int coro_bus_try_send(struct coro_bus *bus, int channel, unsigned data)
 {
 	/* IMPLEMENT THIS FUNCTION */
 	(void)bus;
@@ -203,8 +216,7 @@ coro_bus_try_send(struct coro_bus *bus, int channel, unsigned data)
 	return -1;
 }
 
-int
-coro_bus_recv(struct coro_bus *bus, int channel, unsigned *data)
+int coro_bus_recv(struct coro_bus *bus, int channel, unsigned *data)
 {
 	/* IMPLEMENT THIS FUNCTION */
 	(void)bus;
@@ -214,8 +226,7 @@ coro_bus_recv(struct coro_bus *bus, int channel, unsigned *data)
 	return -1;
 }
 
-int
-coro_bus_try_recv(struct coro_bus *bus, int channel, unsigned *data)
+int coro_bus_try_recv(struct coro_bus *bus, int channel, unsigned *data)
 {
 	/* IMPLEMENT THIS FUNCTION */
 	(void)bus;
@@ -224,12 +235,10 @@ coro_bus_try_recv(struct coro_bus *bus, int channel, unsigned *data)
 	coro_bus_errno_set(CORO_BUS_ERR_NOT_IMPLEMENTED);
 	return -1;
 }
-
 
 #if NEED_BROADCAST
 
-int
-coro_bus_broadcast(struct coro_bus *bus, unsigned data)
+int coro_bus_broadcast(struct coro_bus *bus, unsigned data)
 {
 	/* IMPLEMENT THIS FUNCTION */
 	(void)bus;
@@ -238,8 +247,7 @@ coro_bus_broadcast(struct coro_bus *bus, unsigned data)
 	return -1;
 }
 
-int
-coro_bus_try_broadcast(struct coro_bus *bus, unsigned data)
+int coro_bus_try_broadcast(struct coro_bus *bus, unsigned data)
 {
 	/* IMPLEMENT THIS FUNCTION */
 	(void)bus;
@@ -252,8 +260,7 @@ coro_bus_try_broadcast(struct coro_bus *bus, unsigned data)
 
 #if NEED_BATCH
 
-int
-coro_bus_send_v(struct coro_bus *bus, int channel, const unsigned *data, unsigned count)
+int coro_bus_send_v(struct coro_bus *bus, int channel, const unsigned *data, unsigned count)
 {
 	/* IMPLEMENT THIS FUNCTION */
 	(void)bus;
@@ -264,8 +271,7 @@ coro_bus_send_v(struct coro_bus *bus, int channel, const unsigned *data, unsigne
 	return -1;
 }
 
-int
-coro_bus_try_send_v(struct coro_bus *bus, int channel, const unsigned *data, unsigned count)
+int coro_bus_try_send_v(struct coro_bus *bus, int channel, const unsigned *data, unsigned count)
 {
 	/* IMPLEMENT THIS FUNCTION */
 	(void)bus;
@@ -276,8 +282,7 @@ coro_bus_try_send_v(struct coro_bus *bus, int channel, const unsigned *data, uns
 	return -1;
 }
 
-int
-coro_bus_recv_v(struct coro_bus *bus, int channel, unsigned *data, unsigned capacity)
+int coro_bus_recv_v(struct coro_bus *bus, int channel, unsigned *data, unsigned capacity)
 {
 	/* IMPLEMENT THIS FUNCTION */
 	(void)bus;
@@ -288,8 +293,7 @@ coro_bus_recv_v(struct coro_bus *bus, int channel, unsigned *data, unsigned capa
 	return -1;
 }
 
-int
-coro_bus_try_recv_v(struct coro_bus *bus, int channel, unsigned *data, unsigned capacity)
+int coro_bus_try_recv_v(struct coro_bus *bus, int channel, unsigned *data, unsigned capacity)
 {
 	/* IMPLEMENT THIS FUNCTION */
 	(void)bus;
