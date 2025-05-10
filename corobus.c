@@ -231,6 +231,17 @@ void coro_bus_channel_close(struct coro_bus *bus, int channel)
 
 int coro_bus_send(struct coro_bus *bus, int channel, unsigned data)
 {
+	/*
+	 * Try sending in a loop, until success. If error, then
+	 * check which one is that. If 'wouldblock', then suspend
+	 * this coroutine and try again when woken up.
+	 *
+	 * If see the channel has space, then wakeup the first
+	 * coro in the send-queue. That is needed so when there is
+	 * enough space for many messages, and many coroutines are
+	 * waiting, they would then wake each other up one by one
+	 * as lone as there is still space.
+	 */
 	if (!bus || channel < 0 || channel >= bus->channel_count || bus->channels[channel] == NULL)
 	{
 		coro_bus_errno_set(CORO_BUS_ERR_NO_CHANNEL);
@@ -254,19 +265,6 @@ int coro_bus_send(struct coro_bus *bus, int channel, unsigned data)
 		coro_suspend();
 		rlist_del(&entry.base);
 	}
-	/*
-	 * Try sending in a loop, until success. If error, then
-	 * check which one is that. If 'wouldblock', then suspend
-	 * this coroutine and try again when woken up.
-	 *
-	 * If see the channel has space, then wakeup the first
-	 * coro in the send-queue. That is needed so when there is
-	 * enough space for many messages, and many coroutines are
-	 * waiting, they would then wake each other up one by one
-	 * as lone as there is still space.
-	 */
-	coro_bus_errno_set(CORO_BUS_ERR_NOT_IMPLEMENTED);
-	return -1;
 }
 
 int coro_bus_try_send(struct coro_bus *bus, int channel, unsigned data)
